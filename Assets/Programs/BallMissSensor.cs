@@ -6,9 +6,9 @@ public class BallMissSensor : MonoBehaviour
     private MainGameScene scene = null;
 
 
-    private void OnTriggerEnter(Collider collider)
+    private void OnTriggerEnter(Collider col)
     {
-        if (collider.gameObject.name == "Ball")
+        if (col.gameObject.CompareTag("Ball"))
         {
             scene.MissSignal();
         }

@@ -45,7 +45,7 @@ public class Block : MonoBehaviour
     private void OnCollisionEnter(Collision collision)
     {
         // 衝突した相手がボールなら
-        if (collision.gameObject.name == "Ball")
+        if (collision.gameObject.CompareTag("Ball"))
         {
             // 死亡イベントを送る
             stateMachine.SendEvent((int)StateEventId.Dead);
