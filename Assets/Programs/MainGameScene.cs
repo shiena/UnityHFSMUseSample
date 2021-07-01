@@ -90,7 +90,7 @@ public class MainGameScene : MonoBehaviour
 
             Context.player.ResetPosition(Context.playerStartTransform.position);
             Context.player.DisableMove();
-            Context.ball.GetComponent<Transform>().position = Context.ballStartTransform.position;
+            Context.ball.transform.position = Context.ballStartTransform.position;
             Context.ball.GetComponent<Rigidbody>().velocity = Vector3.zero;
             Context.missCount = 0;
 
@@ -151,7 +151,7 @@ public class MainGameScene : MonoBehaviour
         protected override void Enter()
         {
             Context.player.DisableMove();
-            Context.ball.GetComponent<Transform>().position = Context.ballStartTransform.position;
+            Context.ball.transform.position = Context.ballStartTransform.position;
             Context.ball.GetComponent<Rigidbody>().velocity = Vector3.zero;
 
 

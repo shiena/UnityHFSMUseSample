@@ -47,7 +47,7 @@ public class Player : MonoBehaviour
     private void Start()
     {
         // 壁判定用レイの原点を求める
-        var myTransform = GetComponent<Transform>();
+        var myTransform = transform;
         var boundingBox = GetComponent<MeshFilter>().sharedMesh.bounds;
         leftRayOrigin = boundingBox.center + new Vector3(boundingBox.min.x * myTransform.localScale.x, 0.0f, 0.0f);
         rightRayOrigin = boundingBox.center + new Vector3(boundingBox.max.x * myTransform.localScale.x, 0.0f, 0.0f);
