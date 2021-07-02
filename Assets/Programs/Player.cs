@@ -1,5 +1,7 @@
-﻿using IceMilkTea.Core;
-using UnityEngine;
+﻿using UnityEngine;
+using StateBase = FSM.StateBase<Player.StateId, Player.EventId>;
+using StateMachine = FSM.StateMachine<Player.StateId, Player.EventId>;
+using Transition = FSM.Transition<Player.StateId, Player.EventId>;
 
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(MeshFilter))]
@@ -7,7 +9,13 @@ using UnityEngine;
 public class Player : MonoBehaviour
 {
     // ステートマシンのイベントID列挙型
-    private enum StateEventId
+    internal enum StateId
+    {
+        Enable,
+        Disable,
+    }
+
+    internal enum EventId
     {
         Enable,
         Disable,
@@ -19,7 +27,7 @@ public class Player : MonoBehaviour
     private float moveSpeed = 1.0f;
 
     // ステートマシン変数の定義、もちろんコンテキストは Player クラス
-    private ImtStateMachine<Player> stateMachine;
+    private StateMachine stateMachine;
     private Rigidbody myRigidbody;
     private Vector3 leftRayOrigin;
     private Vector3 rightRayOrigin;
@@ -34,13 +42,15 @@ public class Player : MonoBehaviour
 
 
         // ステートマシンの遷移テーブルを構築（コンテキストのインスタンスはもちろん自分自身）
-        stateMachine = new ImtStateMachine<Player>(this);
-        stateMachine.AddTransition<DisabledState, EnabledState>((int)StateEventId.Enable);
-        stateMachine.AddTransition<EnabledState, DisabledState>((int)StateEventId.Disable);
+        stateMachine = new StateMachine(this);
+        stateMachine.AddState(StateId.Enable, new EnabledState());
+        stateMachine.AddState(StateId.Disable, new DisabledState());
+        stateMachine.AddTriggerTransition(EventId.Enable, new Transition(StateId.Disable, StateId.Enable));
+        stateMachine.AddTriggerTransition(EventId.Disable, new Transition(StateId.Enable, StateId.Disable));
 
 
         // 起動状態はDisabled
-        stateMachine.SetStartState<DisabledState>();
+        stateMachine.SetStartState(StateId.Disable);
     }
 
 
@@ -54,7 +64,7 @@ public class Player : MonoBehaviour
 
 
         // ステートマシンを起動
-        stateMachine.Update();
+        stateMachine.Init();
     }
 
 
@@ -62,7 +72,7 @@ public class Player : MonoBehaviour
     private void FixedUpdate()
     {
         // ステートマシンの更新
-        stateMachine.Update();
+        stateMachine.OnLogic();
     }
 
 
@@ -70,7 +80,7 @@ public class Player : MonoBehaviour
     public void EnableMove()
     {
         // ステートマシンに有効イベントを叩きつける
-        stateMachine.SendEvent((int)StateEventId.Enable);
+        stateMachine.Trigger(EventId.Enable);
     }
 
 
@@ -78,7 +88,7 @@ public class Player : MonoBehaviour
     public void DisableMove()
     {
         // ステートマシンに無効イベントを叩きつける
-        stateMachine.SendEvent((int)StateEventId.Disable);
+        stateMachine.Trigger(EventId.Disable);
     }
 
 
@@ -90,21 +100,35 @@ public class Player : MonoBehaviour
 
 
     // プレイヤーの移動も何も出来ない哀れな状態クラス
-    private class DisabledState : ImtStateMachine<Player>.State
+    private class DisabledState : StateBase
     {
+        public DisabledState(bool needsExitTime = false) : base(needsExitTime)
+        {
+        }
     }
 
 
 
     // プレイヤーの移動が許された状態クラス
-    private class EnabledState : ImtStateMachine<Player>.State
+    private class EnabledState : StateBase
     {
+        private Player player;
+
+        public EnabledState(bool needsExitTime = false) : base(needsExitTime)
+        {
+        }
+
+        public override void Init()
+        {
+            player = mono as Player;
+        }
+
         // 状態の更新を行います
-        protected override void Update()
+        public override void OnLogic()
         {
             // 移動ベクトルを作る（ステートマシンが所属しているコンテキストの値は Context プロパティからアクセスが可能です）
             var inputValue = Input.GetKey(KeyCode.LeftArrow) ? -1.0f : Input.GetKey(KeyCode.RightArrow) ? 1.0f : 0.0f;
-            var moveVector = new Vector3(inputValue, 0.0f, 0.0f).normalized * Context.moveSpeed * Time.fixedDeltaTime;
+            var moveVector = new Vector3(inputValue, 0.0f, 0.0f).normalized * player.moveSpeed * Time.fixedDeltaTime;
 
 
             // 移動方向によって先の壁判定の為のレイを飛ばす
@@ -112,11 +136,11 @@ public class Player : MonoBehaviour
             var raycastHit = false;
             if (inputValue < 0.0f)
             {
-                raycastHit = Physics.Raycast(Context.leftRayOrigin + Context.myRigidbody.position, Vector3.left, out raycastResult, moveVector.magnitude);
+                raycastHit = Physics.Raycast(player.leftRayOrigin + player.myRigidbody.position, Vector3.left, out raycastResult, moveVector.magnitude);
             }
             else if (inputValue > 0.0f)
             {
-                raycastHit = Physics.Raycast(Context.rightRayOrigin + Context.myRigidbody.position, Vector3.right, out raycastResult, moveVector.magnitude);
+                raycastHit = Physics.Raycast(player.rightRayOrigin + player.myRigidbody.position, Vector3.right, out raycastResult, moveVector.magnitude);
             }
 
 
@@ -138,8 +162,8 @@ public class Player : MonoBehaviour
 
 
             // 現在の座標を取得して移動ベクトルを加算して移動関数を叩く
-            var nextPosition = Context.myRigidbody.position + moveVector;
-            Context.myRigidbody.MovePosition(nextPosition);
+            var nextPosition = player.myRigidbody.position + moveVector;
+            player.myRigidbody.MovePosition(nextPosition);
         }
     }
 }

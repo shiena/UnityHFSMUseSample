@@ -1,12 +1,20 @@
-﻿using IceMilkTea.Core;
-using UnityEngine;
+﻿using UnityEngine;
+using StateBase = FSM.StateBase<Block.StateId, Block.EventId>;
+using StateMachine = FSM.StateMachine<Block.StateId, Block.EventId>;
+using Transition = FSM.Transition<Block.StateId, Block.EventId>;
 
 [RequireComponent(typeof(MeshRenderer))]
 [RequireComponent(typeof(Collider))]
 public class Block : MonoBehaviour
 {
     // 状態イベントの定義
-    private enum StateEventId
+    internal enum StateId
+    {
+        Dead,
+        Revive,
+    }
+
+    internal enum EventId
     {
         Dead,
         Revive,
@@ -14,33 +22,33 @@ public class Block : MonoBehaviour
 
 
     // 現在の状態が生存状態なら生存していることを返すプロパティ
-    public bool IsAlive => stateMachine.IsCurrentState<AliveState>();
+    public bool IsAlive => stateMachine.ActiveStateName == StateId.Revive;
 
 
-    private ImtStateMachine<Block> stateMachine;
+    private StateMachine stateMachine;
 
 
 
     private void Awake()
     {
-        stateMachine = new ImtStateMachine<Block>(this);
-        stateMachine.AddTransition<AliveState, DeadState>((int)StateEventId.Dead);
-        stateMachine.AddTransition<DeadState, AliveState>((int)StateEventId.Revive);
+        stateMachine = new StateMachine(this);
+        stateMachine.AddState(StateId.Revive, new AliveState());
+        stateMachine.AddState(StateId.Dead, new DeadState());
 
+        stateMachine.AddTriggerTransition(EventId.Revive,
+            new Transition(StateId.Dead, StateId.Revive));
+        stateMachine.AddTriggerTransition(EventId.Dead,
+            new Transition(StateId.Revive, StateId.Dead));
 
-        stateMachine.SetStartState<AliveState>();
-    }
+        stateMachine.SetStartState(StateId.Revive);
 
-
-    private void Start()
-    {
-        stateMachine.Update();
+        stateMachine.Init();
     }
 
 
     private void Update()
     {
-        stateMachine.Update();
+        stateMachine.OnLogic();
     }
 
 
@@ -50,7 +58,7 @@ public class Block : MonoBehaviour
         if (collision.gameObject.CompareTag("Ball"))
         {
             // 死亡イベントを送る
-            stateMachine.SendEvent((int)StateEventId.Dead);
+            stateMachine.Trigger(EventId.Dead);
         }
     }
 
@@ -58,27 +66,53 @@ public class Block : MonoBehaviour
     public void Revive()
     {
         // ステートマシンに復活イベントを送る
-        stateMachine.SendEvent((int)StateEventId.Revive);
+        stateMachine.Trigger(EventId.Revive);
     }
 
 
 
-    private class AliveState : ImtStateMachine<Block>.State
+    private class AliveState : StateBase
     {
-        protected override void Enter()
+        private MeshRenderer meshRenderer;
+        private Collider collider;
+
+        public AliveState(bool needsExitTime = false) : base(needsExitTime)
         {
-            Context.GetComponent<MeshRenderer>().enabled = true;
-            Context.GetComponent<Collider>().enabled = true;
+        }
+
+        public override void Init()
+        {
+            meshRenderer = mono.GetComponent<MeshRenderer>();
+            collider = mono.GetComponent<Collider>();
+        }
+
+        public override void OnEnter()
+        {
+            meshRenderer.enabled = true;
+            collider.enabled = true;
         }
     }
 
 
-    private class DeadState : ImtStateMachine<Block>.State
+    private class DeadState : StateBase
     {
-        protected override void Enter()
+        private MeshRenderer meshRenderer;
+        private Collider collider;
+
+        public DeadState(bool needsExitTime = false) : base(needsExitTime)
         {
-            Context.GetComponent<MeshRenderer>().enabled = false;
-            Context.GetComponent<Collider>().enabled = false;
+        }
+
+        public override void Init()
+        {
+            meshRenderer = mono.GetComponent<MeshRenderer>();
+            collider = mono.GetComponent<Collider>();
+        }
+
+        public override void OnEnter()
+        {
+            meshRenderer.enabled = false;
+            collider.enabled = false;
         }
     }
 }

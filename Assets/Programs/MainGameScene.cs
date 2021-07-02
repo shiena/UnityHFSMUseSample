@@ -1,10 +1,22 @@
-using IceMilkTea.Core;
 using UnityEngine;
+using StateBase = FSM.StateBase<MainGameScene.StateId, MainGameScene.EventId>;
+using StateMachine = FSM.StateMachine<MainGameScene.StateId, MainGameScene.EventId>;
+using Transition = FSM.Transition<MainGameScene.StateId, MainGameScene.EventId>;
 
 public class MainGameScene : MonoBehaviour
 {
     // ステートマシンのイベントID列挙型
-    private enum StateEventId
+    internal enum StateId
+    {
+        Reset,
+        Standby,
+        Playing,
+        Miss,
+        GameClear,
+        GameOver,
+    }
+
+    internal enum EventId
     {
         Play,
         Miss,
@@ -32,7 +44,7 @@ public class MainGameScene : MonoBehaviour
     private Block[] blocks = null;
 
     // ステートマシン変数の定義、もちろんコンテキストは MainGameScene クラス
-    private ImtStateMachine<MainGameScene> stateMachine;
+    private StateMachine stateMachine;
     private int missCount;
 
 
@@ -41,94 +53,127 @@ public class MainGameScene : MonoBehaviour
     private void Awake()
     {
         // ステートマシンの遷移テーブルを構築（コンテキストのインスタンスはもちろん自分自身）
-        stateMachine = new ImtStateMachine<MainGameScene>(this);
-        stateMachine.AddTransition<ResetState, StandbyState>((int)StateEventId.Finish);
-        stateMachine.AddTransition<StandbyState, PlayingState>((int)StateEventId.Play);
-        stateMachine.AddTransition<PlayingState, MissState>((int)StateEventId.Miss);
-        stateMachine.AddTransition<PlayingState, GameClearState>((int)StateEventId.AllBlockBroken);
-        stateMachine.AddTransition<MissState, StandbyState>((int)StateEventId.Retry);
-        stateMachine.AddTransition<MissState, GameOverState>((int)StateEventId.Exit);
-        stateMachine.AddTransition<GameClearState, ResetState>((int)StateEventId.Finish);
-        stateMachine.AddTransition<GameOverState, ResetState>((int)StateEventId.Finish);
+        stateMachine = new StateMachine(this);
 
+        stateMachine.AddState(StateId.Miss, new MissState());
+        stateMachine.AddState(StateId.Playing, new PlayingState());
+        stateMachine.AddState(StateId.Reset, new ResetState());
+        stateMachine.AddState(StateId.Standby, new StandbyState());
+        stateMachine.AddState(StateId.GameClear, new GameClearState());
+        stateMachine.AddState(StateId.GameOver, new GameOverState());
+
+        stateMachine.AddTriggerTransition(EventId.Finish, new Transition(StateId.Reset, StateId.Standby));
+        stateMachine.AddTriggerTransition(EventId.Play, new Transition(StateId.Standby, StateId.Playing));
+        stateMachine.AddTriggerTransition(EventId.Miss, new Transition(StateId.Playing, StateId.Miss));
+        stateMachine.AddTriggerTransition(EventId.AllBlockBroken, new Transition(StateId.Playing, StateId.GameClear));
+        stateMachine.AddTriggerTransition(EventId.Retry, new Transition(StateId.Miss, StateId.Standby));
+        stateMachine.AddTriggerTransition(EventId.Exit, new Transition(StateId.Miss, StateId.GameOver));
+        stateMachine.AddTriggerTransition(EventId.Finish, new Transition(StateId.GameClear, StateId.Reset));
+        stateMachine.AddTriggerTransition(EventId.Finish, new Transition(StateId.GameOver, StateId.Reset));
 
         // 起動状態はReset
-        stateMachine.SetStartState<ResetState>();
+        stateMachine.SetStartState(StateId.Reset);
     }
 
 
     private void Start()
     {
         // ステートマシンを起動
-        stateMachine.Update();
+        stateMachine.Init();
     }
 
 
     private void Update()
     {
         // ステートマシンの更新
-        stateMachine.Update();
+        stateMachine.OnLogic();
     }
 
 
     public void MissSignal()
     {
         // ステートマシンにミスイベントを送る
-        stateMachine.SendEvent((int)StateEventId.Miss);
+        stateMachine.Trigger(EventId.Miss);
     }
 
 
-    private class ResetState : ImtStateMachine<MainGameScene>.State
+    private class ResetState : StateBase
     {
-        protected override void Enter()
+        private MainGameScene mainGameScene;
+
+        public ResetState(bool needsExitTime = false) : base(needsExitTime)
         {
-            foreach (var block in Context.blocks)
+        }
+
+        public override void Init()
+        {
+            mainGameScene = mono as MainGameScene;
+        }
+
+        public override void OnEnter()
+        {
+            foreach (var block in mainGameScene.blocks)
             {
                 block.Revive();
             }
 
 
-            Context.player.ResetPosition(Context.playerStartTransform.position);
-            Context.player.DisableMove();
-            Context.ball.transform.position = Context.ballStartTransform.position;
-            Context.ball.GetComponent<Rigidbody>().velocity = Vector3.zero;
-            Context.missCount = 0;
+            mainGameScene.player.ResetPosition(mainGameScene.playerStartTransform.position);
+            mainGameScene.player.DisableMove();
+            mainGameScene.ball.transform.position = mainGameScene.ballStartTransform.position;
+            mainGameScene.ball.GetComponent<Rigidbody>().velocity = Vector3.zero;
+            mainGameScene.missCount = 0;
 
 
-            StateMachine.SendEvent((int)StateEventId.Finish);
+            fsm.Trigger(EventId.Finish);
         }
     }
 
 
-    private class StandbyState : ImtStateMachine<MainGameScene>.State
+    private class StandbyState : StateBase
     {
-        protected override void Update()
+        public StandbyState(bool needsExitTime = false) : base(needsExitTime)
+        {
+        }
+
+        public override void OnLogic()
         {
             if (Input.GetKeyDown(KeyCode.Space))
             {
-                StateMachine.SendEvent((int)StateEventId.Play);
+                fsm.Trigger(EventId.Play);
             }
         }
     }
 
 
-    private class PlayingState : ImtStateMachine<MainGameScene>.State
+    private class PlayingState : StateBase
     {
-        protected override void Enter()
+        private MainGameScene mainGameScene;
+
+        public PlayingState(bool needsExitTime = false) : base(needsExitTime)
+        {
+        }
+
+        public override void Init()
+        {
+            mainGameScene = mono as MainGameScene;
+        }
+
+        public override void OnEnter()
         {
             var xDirection = Random.Range(-1.0f, 1.0f);
             var zDirection = Random.Range(0.5f, 1.0f);
-            Context.ball.GetComponent<Rigidbody>().velocity = new Vector3(xDirection, 0.0f, zDirection).normalized * Context.ballSpeed;
+            mainGameScene.ball.GetComponent<Rigidbody>().velocity = new Vector3(xDirection, 0.0f, zDirection).normalized * mainGameScene.ballSpeed;
 
 
-            Context.player.EnableMove();
+            mainGameScene.player.EnableMove();
         }
 
 
-        protected override void Update()
+        public override void OnLogic()
         {
             var blockAllDead = true;
-            foreach (var block in Context.blocks)
+            foreach (var block in mainGameScene.blocks)
             {
                 if (block.IsAlive)
                 {
@@ -140,50 +185,69 @@ public class MainGameScene : MonoBehaviour
 
             if (blockAllDead)
             {
-                StateMachine.SendEvent((int)StateEventId.AllBlockBroken);
+                fsm.Trigger(EventId.AllBlockBroken);
             }
         }
     }
 
 
-    private class MissState : ImtStateMachine<MainGameScene>.State
+    private class MissState : StateBase
     {
-        protected override void Enter()
+        private MainGameScene mainGameScene;
+
+        public MissState(bool needsExitTime = false) : base(needsExitTime)
         {
-            Context.player.DisableMove();
-            Context.ball.transform.position = Context.ballStartTransform.position;
-            Context.ball.GetComponent<Rigidbody>().velocity = Vector3.zero;
+        }
+
+        public override void Init()
+        {
+            mainGameScene = mono as MainGameScene;
+        }
+
+        public override void OnEnter()
+        {
+            mainGameScene.player.DisableMove();
+            mainGameScene.ball.transform.position = mainGameScene.ballStartTransform.position;
+            mainGameScene.ball.GetComponent<Rigidbody>().velocity = Vector3.zero;
 
 
-            Context.missCount += 1;
-            if (Context.missCount == Context.availablePlayCount)
+            mainGameScene.missCount += 1;
+            if (mainGameScene.missCount == mainGameScene.availablePlayCount)
             {
-                StateMachine.SendEvent((int)StateEventId.Exit);
+                fsm.Trigger(EventId.Exit);
                 return;
             }
 
 
-            StateMachine.SendEvent((int)StateEventId.Retry);
+            fsm.Trigger(EventId.Retry);
         }
     }
 
 
-    private class GameClearState : ImtStateMachine<MainGameScene>.State
+    private class GameClearState : StateBase
     {
-        protected override void Enter()
+        public GameClearState(bool needsExitTime = false) : base(needsExitTime)
+        {
+        }
+
+        public override void OnEnter()
         {
             Debug.Log("GameClear!!!");
-            StateMachine.SendEvent((int)StateEventId.Finish);
+            fsm.Trigger(EventId.Finish);
         }
     }
 
 
-    private class GameOverState : ImtStateMachine<MainGameScene>.State
+    private class GameOverState : StateBase
     {
-        protected override void Enter()
+        public GameOverState(bool needsExitTime = false) : base(needsExitTime)
+        {
+        }
+
+        public override void OnEnter()
         {
             Debug.Log("GameOver...");
-            StateMachine.SendEvent((int)StateEventId.Finish);
+            fsm.Trigger(EventId.Finish);
         }
     }
 }
