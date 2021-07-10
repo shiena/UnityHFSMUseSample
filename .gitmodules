@@ -1,0 +1,4 @@
+[submodule "Packages/com.inspiaaa.unityhfsm"]
+	path = Packages/com.inspiaaa.unityhfsm
+	url = https://github.com/shiena/UnityHFSM.git
+	branch = feature/support-upm
