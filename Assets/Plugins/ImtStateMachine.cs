@@ -15,7 +15,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 
@@ -45,12 +44,13 @@ namespace IceMilkTea.Core
 
 
 
-    #region 標準ステートマシン実装
+    #region 標準ステートマシン基底実装
     /// <summary>
     /// コンテキストを持つことのできるステートマシンクラスです
     /// </summary>
     /// <typeparam name="TContext">このステートマシンが持つコンテキストの型</typeparam>
-    public class ImtStateMachine<TContext>
+    /// <typeparam name="TEvent">ステートマシンへ送信するイベントの型</typeparam>
+    public class ImtStateMachine<TContext, TEvent>
     {
         #region ステートクラス本体と特別ステートクラスの定義
         /// <summary>
@@ -59,15 +59,15 @@ namespace IceMilkTea.Core
         public abstract class State
         {
             // メンバ変数定義
-            internal Dictionary<int, State> transitionTable;
-            internal ImtStateMachine<TContext> stateMachine;
+            internal Dictionary<TEvent, State> transitionTable;
+            internal ImtStateMachine<TContext, TEvent> stateMachine;
 
 
 
             /// <summary>
             /// このステートが所属するステートマシン
             /// </summary>
-            protected ImtStateMachine<TContext> StateMachine => stateMachine;
+            protected ImtStateMachine<TContext, TEvent> StateMachine => stateMachine;
 
 
             /// <summary>
@@ -123,7 +123,7 @@ namespace IceMilkTea.Core
             /// </summary>
             /// <param name="eventId">渡されたイベントID</param>
             /// <returns>イベントの受付をガードする場合は true を、ガードせずイベントを受け付ける場合は false を返します</returns>
-            protected internal virtual bool GuardEvent(int eventId)
+            protected internal virtual bool GuardEvent(TEvent eventId)
             {
                 // 通常はガードしない
                 return false;
@@ -146,7 +146,7 @@ namespace IceMilkTea.Core
         /// <summary>
         /// ステートマシンで "任意" を表現する特別なステートクラスです
         /// </summary>
-        private sealed class AnyState : State { }
+        public sealed class AnyState : State { }
         #endregion
 
 
@@ -187,6 +187,7 @@ namespace IceMilkTea.Core
         private State currentState;
         private State nextState;
         private Stack<State> stateStack;
+        private HashSet<Func<Type, State>> stateFactorySet;
 
 
 
@@ -250,12 +251,19 @@ namespace IceMilkTea.Core
         public int LastUpdateThreadId { get; private set; }
 
 
+        /// <summary>
+        /// このステートマシンが最後に受け付けたイベントID
+        /// </summary>
+        public TEvent LastAcceptedEventID { get; private set; }
+
+
 
         /// <summary>
         /// ImtStateMachine のインスタンスを初期化します
         /// </summary>
         /// <param name="context">このステートマシンが持つコンテキスト</param>
         /// <exception cref="ArgumentNullException">context が null です</exception>
+        /// <exception cref="InvalidOperationException">ステートクラスのインスタンスの生成に失敗しました</exception>
         public ImtStateMachine(TContext context)
         {
             // 渡されたコンテキストがnullなら
@@ -273,11 +281,34 @@ namespace IceMilkTea.Core
             updateState = UpdateState.Idle;
             AllowRetransition = false;
             UnhandledExceptionMode = ImtStateMachineUnhandledExceptionMode.ThrowException;
-
-
-            // この時点で任意ステートのインスタンスを作ってしまう
-            GetOrCreateState<AnyState>();
+            stateFactorySet = new HashSet<Func<Type, State>>();
         }
+
+
+        #region 汎用ロジック系
+        /// <summary>
+        /// 型からステートインスタンスを生成するファクトリ関数を登録します
+        /// </summary>
+        /// <param name="stateFactory">登録するファクトリ関数</param>
+        /// <exception cref="ArgumentNullException">stateFactory が null です</exception>
+        public void RegisterStateFactory(Func<Type, State> stateFactory)
+        {
+            // ハッシュセットに登録する
+            stateFactorySet.Add(stateFactory ?? throw new ArgumentNullException(nameof(stateFactory)));
+        }
+
+
+        /// <summary>
+        /// 登録したファクトリ関数の解除をします
+        /// </summary>
+        /// <param name="stateFactory">解除するファクトリ関数</param>
+        /// <exception cref="ArgumentNullException">stateFactory が null です</exception>
+        public void UnregisterStateFactory(Func<Type, State> stateFactory)
+        {
+            // ハッシュセットから登録を解除する
+            stateFactorySet.Remove(stateFactory ?? throw new ArgumentNullException(nameof(stateFactory)));
+        }
+        #endregion
 
 
         #region ステート遷移テーブル構築系
@@ -293,31 +324,10 @@ namespace IceMilkTea.Core
         /// <param name="eventId">遷移する条件となるイベントID</param>
         /// <exception cref="ArgumentException">既に同じ eventId が設定された遷移先ステートが存在します</exception>
         /// <exception cref="InvalidOperationException">ステートマシンは、既に起動中です</exception>
-        public void AddAnyTransition<TNextState>(int eventId) where TNextState : State, new()
+        public void AddAnyTransition<TNextState>(TEvent eventId) where TNextState : State, new()
         {
             // 単純に遷移元がAnyStateなだけの単純な遷移追加関数を呼ぶ
             AddTransition<AnyState, TNextState>(eventId);
-        }
-
-
-        /// <summary>
-        /// ステートの任意遷移構造を追加します。
-        /// </summary>
-        /// <remarks>
-        /// この関数は、遷移元が任意の状態からの遷移を希望する場合に利用してください。
-        /// 任意の遷移は、通常の遷移（Any以外の遷移元）より優先度が低いことにも、注意をしてください。
-        /// また、ステートの遷移テーブル設定はステートマシンが起動する前に完了しなければなりません。
-        /// </remarks>
-        /// <param name="nextStateType">任意状態から遷移する先になるステートの型</param>
-        /// <param name="eventId">遷移する条件となるイベントID</param>
-        /// <exception cref="ArgumentNullException">nextStateType が null です</exception>
-        /// <exception cref="ArgumentException">nextStateType が State を継承したクラスではありません</exception>
-        /// <exception cref="ArgumentException">既に同じ eventId が設定された遷移先ステートが存在します</exception>
-        /// <exception cref="InvalidOperationException">ステートマシンは、既に起動中です</exception>
-        public void AddAnyTransition(Type nextStateType, int eventId)
-        {
-            // 単純に遷移元がAnyStateなだけの単純な遷移追加関数を呼ぶ
-            AddTransition(typeof(AnyState), nextStateType, eventId);
         }
 
 
@@ -330,25 +340,8 @@ namespace IceMilkTea.Core
         /// <param name="eventId">遷移する条件となるイベントID</param>
         /// <exception cref="ArgumentException">既に同じ eventId が設定された遷移先ステートが存在します</exception>
         /// <exception cref="InvalidOperationException">ステートマシンは、既に起動中です</exception>
-        public void AddTransition<TPrevState, TNextState>(int eventId) where TPrevState : State, new() where TNextState : State, new()
-        {
-            // 型引数を取るバージョンで呼び出す
-            AddTransition(typeof(TPrevState), typeof(TNextState), eventId);
-        }
-
-
-        /// <summary>
-        /// ステートの遷移構造を追加します。
-        /// また、ステートの遷移テーブル設定はステートマシンが起動する前に完了しなければなりません。
-        /// </summary>
-        /// <param name="prevStateType">遷移する元になるステートの型</param>
-        /// <param name="nextStateType">遷移する先になるステートの型</param>
-        /// <param name="eventId">遷移する条件となるイベントID</param>
-        /// <exception cref="ArgumentNullException">prevStateType または nextStateType が null です</exception>
-        /// <exception cref="ArgumentException">prevStateType または nextStateType が State を継承したクラスではありません</exception>
-        /// <exception cref="ArgumentException">既に同じ eventId が設定された遷移先ステートが存在します</exception>
-        /// <exception cref="InvalidOperationException">ステートマシンは、既に起動中です</exception>
-        public void AddTransition(Type prevStateType, Type nextStateType, int eventId)
+        /// <exception cref="InvalidOperationException">ステートクラスのインスタンスの生成に失敗しました</exception>
+        public void AddTransition<TPrevState, TNextState>(TEvent eventId) where TPrevState : State, new() where TNextState : State, new()
         {
             // ステートマシンが起動してしまっている場合は
             if (Running)
@@ -359,8 +352,8 @@ namespace IceMilkTea.Core
 
 
             // 遷移元と遷移先のステートインスタンスを取得
-            var prevState = GetOrCreateState(prevStateType);
-            var nextState = GetOrCreateState(nextStateType);
+            var prevState = GetOrCreateState<TPrevState>();
+            var nextState = GetOrCreateState<TNextState>();
 
 
             // 遷移元ステートの遷移テーブルに既に同じイベントIDが存在していたら
@@ -377,64 +370,12 @@ namespace IceMilkTea.Core
 
 
         /// <summary>
-        /// ステートの遷移構造を、可変長引数式に一気に追加します。
-        /// 追加構造は（Type from, Type to, int event, Type from, Type to, int event,,,）となるような配列で指定して下さい
-        /// </summary>
-        /// <param name="transitionArray">一気に追加する遷移構造</param>
-        /// <exception cref="ArgumentException">遷移構造パラメータは最低でも3つ以上か、3の倍数の長さで作って下さい</exception>
-        /// <exception cref="InvalidOperationException">遷移テーブル構築配列に不正な型、または扱えない値や null などが含まれていました</exception>
-        public void AddTransitionRange(params object[] transitionArray)
-        {
-            // 引数の長さが 0 または 3の倍数以外なら
-            if (transitionArray.Length == 0 || (transitionArray.Length % 3) != 0)
-            {
-                // 引数が想定外の長さである
-                throw new ArgumentException("遷移構造パラメータは最低でも3つ以上か、3の倍数の長さで作って下さい");
-            }
-
-
-            // データを突っ込む回数を求めて一気に追加
-            var stateBaseType = typeof(State);
-            var dataCount = transitionArray.Length / 3;
-            for (int i = 0; i < dataCount; ++i)
-            {
-                // ちゃんと StateType, StateType, int の順番で格納されているかチェックして、ダメなら
-                var fromType = transitionArray[i * 3 + 0] as Type;
-                var toType = transitionArray[i * 3 + 1] as Type;
-                var eventId = transitionArray[i * 3 + 2];
-                if (!(stateBaseType.IsAssignableFrom(fromType) && stateBaseType.IsAssignableFrom(toType) && eventId is int))
-                {
-                    // 不正なデータ構造として例外を吐く
-                    throw new InvalidOperationException("遷移テーブル構築配列に不正な型、または扱えない値や null などが含まれていました");
-                }
-
-
-                // 型で引数を取るAddTransitionを呼び続ける
-                AddTransition(fromType, toType, (int)eventId);
-            }
-        }
-
-
-        /// <summary>
         /// ステートマシンが起動する時に、最初に開始するステートを設定します。
         /// </summary>
         /// <typeparam name="TStartState">ステートマシンが起動時に開始するステートの型</typeparam>
         /// <exception cref="InvalidOperationException">ステートマシンは、既に起動中です</exception>
+        /// <exception cref="InvalidOperationException">ステートクラスのインスタンスの生成に失敗しました</exception>
         public void SetStartState<TStartState>() where TStartState : State, new()
-        {
-            // 型引数を取るバージョンで呼ぶ
-            SetStartState(typeof(TStartState));
-        }
-
-
-        /// <summary>
-        /// ステートマシンが起動する時に、最初に開始するステートを設定します。
-        /// </summary>
-        /// <param name="startStateType">ステートマシンが起動時に開始するステートの型</param>
-        /// <exception cref="InvalidOperationException">ステートマシンは、既に起動中です</exception>
-        /// <exception cref="ArgumentNullException">startStateType が null です</exception>
-        /// <exception cref="ArgumentException">startStateType が State を継承したクラスではありません</exception>
-        public void SetStartState(Type startStateType)
         {
             // 既にステートマシンが起動してしまっている場合は
             if (Running)
@@ -445,7 +386,7 @@ namespace IceMilkTea.Core
 
 
             // 次に処理するステートの設定をする
-            nextState = GetOrCreateState(startStateType);
+            nextState = GetOrCreateState<TStartState>();
         }
         #endregion
 
@@ -588,7 +529,7 @@ namespace IceMilkTea.Core
         /// <returns>ステートマシンが送信されたイベントを受け付けた場合は true を、イベントを拒否または、イベントの受付ができない場合は false を返します</returns>
         /// <exception cref="InvalidOperationException">ステートマシンは、まだ起動していません</exception>
         /// <exception cref="InvalidOperationException">ステートが Exit 処理中のためイベントを受け付けることが出来ません</exception>
-        public virtual bool SendEvent(int eventId)
+        public virtual bool SendEvent(TEvent eventId)
         {
             // そもそもまだ現在実行中のステートが存在していないなら例外を投げる
             IfNotRunningThrowException();
@@ -630,7 +571,8 @@ namespace IceMilkTea.Core
             }
 
 
-            // イベントの受付をした事を返す
+            // 最後に受け付けたイベントIDを覚えてイベントの受付をした事を返す
+            LastAcceptedEventID = eventId;
             return true;
         }
 
@@ -824,60 +766,73 @@ namespace IceMilkTea.Core
         /// </summary>
         /// <typeparam name="TState">取得、または生成するステートの型</typeparam>
         /// <returns>取得、または生成されたステートのインスタンスを返します</returns>
+        /// <exception cref="InvalidOperationException">ステートクラスのインスタンスの生成に失敗しました</exception>
         private TState GetOrCreateState<TState>() where TState : State, new()
         {
-            // 型の引数を取る関数を叩いて返す
-            return (TState)GetOrCreateState(typeof(TState));
-        }
-
-
-        /// <summary>
-        /// 指定されたステートの型のインスタンスを取得しますが、存在しない場合は生成してから取得します。
-        /// 生成されたインスタンスは、次回から取得されるようになります。
-        /// </summary>
-        /// <param name="stateType">取得、または生成するステートの型</param>
-        /// <returns>取得、または生成されたステートのインスタンスを返します</returns>
-        /// <exception cref="ArgumentNullException">stateType が null です</exception>
-        /// <exception cref="ArgumentException">'{stateType}'は、ステートの型ではありません</exception>
-        private State GetOrCreateState(Type stateType)
-        {
-            // nullが渡されたら
-            if (stateType == null)
-            {
-                // 何を取得すればよいのか
-                throw new ArgumentNullException(nameof(stateType));
-            }
-
-
-            // 要求ステートの型が State を継承していないなら
-            if (!typeof(State).IsAssignableFrom(stateType))
-            {
-                // Stateを継承していないとダメです
-                throw new ArgumentException($"'{stateType.ToString()}'は、ステートの型ではありません");
-            }
-
-
             // ステートの数分回る
+            var stateType = typeof(TState);
             foreach (var state in stateList)
             {
                 // もし該当のステートの型と一致するインスタンスなら
                 if (state.GetType() == stateType)
                 {
                     // そのインスタンスを返す
-                    return state;
+                    return (TState)state;
                 }
             }
 
 
             // ループから抜けたのなら、型一致するインスタンスが無いという事なのでインスタンスを生成してキャッシュする
-            var newState = (State)Activator.CreateInstance(stateType);
+            var newState = CreateStateInstanceCore<TState>() ?? throw new InvalidOperationException("ステートクラスのインスタンスの生成に失敗しました");
             stateList.Add(newState);
 
 
             // 新しいステートに、自身の参照と遷移テーブルのインスタンスの初期化も行って返す
             newState.stateMachine = this;
-            newState.transitionTable = new Dictionary<int, State>();
+            newState.transitionTable = new Dictionary<TEvent, State>();
             return newState;
+        }
+
+
+        /// <summary>
+        /// 指定されたステートの型のインスタンスを生成します。
+        /// </summary>
+        /// <typeparam name="TState">生成するべきステータスの型</typeparam>
+        /// <returns>生成したインスタンスを返します</returns>
+        private TState CreateStateInstanceCore<TState>() where TState : State, new()
+        {
+            // 結果を受け取る変数を宣言
+            TState result;
+
+
+            // 登録されているファクトリ関数分回る
+            var stateType = typeof(TState);
+            foreach (var factory in stateFactorySet)
+            {
+                // 生成を試みてインスタンスが生成されたのなら
+                result = (TState)factory(stateType);
+                if (result != null)
+                {
+                    // このインスタンスを返す
+                    return result;
+                }
+            }
+
+
+            // ファクトリ関数でも駄目なら実装側生成関数に頼る
+            return CreateStateInstance<TState>();
+        }
+
+
+        /// <summary>
+        /// 指定されたステートの型のインスタンスを生成します。
+        /// </summary>
+        /// <typeparam name="TState">生成するべきステータスの型</typeparam>
+        /// <returns>生成したインスタンスを返します</returns>
+        protected virtual TState CreateStateInstance<TState>() where TState : State, new()
+        {
+            // 既定動作はジェネリックのnewをするのみで返す
+            return new TState();
         }
         #endregion
     }
@@ -885,594 +840,20 @@ namespace IceMilkTea.Core
 
 
 
-    #region 同期コンテキストの実装
+    #region 旧intイベント型ベースのステートマシン実装
     /// <summary>
-    /// 同期ステートマシンが保持する、同期コンテキストのクラスです
+    /// コンテキストを持つことのできるステートマシンクラスです
     /// </summary>
-    /// <remarks>
-    /// このクラスは ImtSynchronizationStateMachine クラスが、ステートで処理される非同期処理を同期的に制御する際に利用されます
-    /// </remarks>
-    internal class StateMachineSynchronizationContext : SynchronizationContext, IDisposable
+    /// <typeparam name="TContext">このステートマシンが持つコンテキストの型</typeparam>
+    public class ImtStateMachine<TContext> : ImtStateMachine<TContext, int>
     {
         /// <summary>
-        /// 同期コンテキストに送られてきたコールバック関数を保持する構造体です
-        /// </summary>
-        private struct Message
-        {
-            /// <summary>
-            /// 処理するべきコールバック
-            /// </summary>
-            public SendOrPostCallback callback { get; private set; }
-
-            /// <summary>
-            /// コールバック関数を呼ぶときに渡すべき状態オブジェクト
-            /// </summary>
-            public object state { get; private set; }
-
-            /// <summary>
-            /// 非同期処理側からの同期呼び出しが行われた際の待機オブジェクト
-            /// </summary>
-            public ManualResetEvent waitHandle { get; private set; }
-
-
-
-            /// <summary>
-            /// Message インスタンスの初期化を行います
-            /// </summary>
-            /// <param name="callback">呼び出すべきコールバック</param>
-            /// <param name="state">コールバックに渡すべきステートオブジェクト</param>
-            /// <param name="waitHandle">同期呼び出しの際に必要な待機オブジェクト</param>
-            public Message(SendOrPostCallback callback, object state, ManualResetEvent waitHandle)
-            {
-                // 渡されたものを覚える
-                this.callback = callback;
-                this.state = state;
-                this.waitHandle = waitHandle;
-            }
-
-
-            /// <summary>
-            /// メッセージの呼び出しを行います。
-            /// また、この時に同期オブジェクトが渡されていた場合は、同期オブジェクトのシグナルも送信します。
-            /// </summary>
-            public void Invoke()
-            {
-                // コールバックの呼び出し
-                callback(state);
-
-
-                // もし待機オブジェクトがあるなら
-                if (waitHandle != null)
-                {
-                    // シグナルを送る
-                    waitHandle.Set();
-                }
-            }
-        }
-
-
-
-        // 以下メンバ変数定義
-        private int myStartupThreadId;
-        private Queue<Message> messageQueue;
-        private SynchronizationContext failbackSynContext;
-        private bool disposed;
-
-
-
-        /// <summary>
-        /// StateMachineSynchronizationContext のインスタンスを初期化します
-        /// </summary>
-        public StateMachineSynchronizationContext()
-        {
-            // 自分が起動したスレッドのIDを覚えつつ
-            // ポストされたメッセージを溜めるキューのインスタンスを生成
-            myStartupThreadId = Thread.CurrentThread.ManagedThreadId;
-            messageQueue = new Queue<Message>(32);
-
-
-            // フェイルバック先の同期コンテキストを拾っておく
-            failbackSynContext = AsyncOperationManager.SynchronizationContext;
-        }
-
-
-        /// <summary>
-        /// StateMachineSynchronizationContext のデストラクタです
-        /// </summary>
-        ~StateMachineSynchronizationContext()
-        {
-            // デストラクタからのDispose呼び出し
-            Dispose(false);
-        }
-
-
-        /// <summary>
-        /// リソースの解放を行います
-        /// </summary>
-        public void Dispose()
-        {
-            // DisposeからのDispose呼び出しをしてデストラクタを呼ばれないようにする
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-
-        /// <summary>
-        /// リソースの実際の解放を行います
-        /// </summary>
-        /// <param name="disposing">マネージ解放なら true を、アンマネージの解放なら false を指定</param>
-        protected virtual void Dispose(bool disposing)
-        {
-            // すでに解放済みなら
-            if (disposed)
-            {
-                // 何もせず終了
-                return;
-            }
-
-
-            // キューをロック
-            lock (messageQueue)
-            {
-                // 自身のメッセージキューが空になるまでループ
-                while (messageQueue.Count > 0)
-                {
-                    // メッセージを取り出す
-                    var message = messageQueue.Dequeue();
-
-
-                    // 自身に送られたメッセージを全て、フェイルバック先同期コンテキストに Post する
-                    // （Send されたメッセージも、どうしようもないので Post する）
-                    failbackSynContext.Post(message.callback, message.state);
-
-
-                    // Send 呼び出しの待機ハンドルが存在するなら
-                    if (message.waitHandle != null)
-                    {
-                        // シグナルを送ってハンドルを破棄する
-                        message.waitHandle.Set();
-                        message.waitHandle.Dispose();
-                    }
-                }
-            }
-
-
-            // 解放済みマーク
-            disposed = true;
-        }
-
-
-        /// <summary>
-        /// 同期コンテキストに、メッセージを同期呼び出しするように送信します
-        /// </summary>
-        /// <param name="callback">同期呼び出しをして欲しいコールバック関数</param>
-        /// <param name="state">コールバックに渡すオブジェクト</param>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        public override void Send(SendOrPostCallback callback, object state)
-        {
-            // 解放済み例外送出関数を叩く
-            ThrowIfDisposed();
-
-
-            // 呼び出し側が同じスレッドなら
-            if (Thread.CurrentThread.ManagedThreadId == myStartupThreadId)
-            {
-                // わざわざ同期コンテキストに送らないで、自分で呼んでや
-                callback(state);
-                return;
-            }
-
-
-            // 待機オブジェクトを作って
-            using (var waitHandle = new ManualResetEvent(false))
-            {
-                // キューをロック
-                lock (messageQueue)
-                {
-                    // キューに自分のメッセージが処理されるようにキューイング
-                    messageQueue.Enqueue(new Message(callback, state, waitHandle));
-                }
-
-
-                // メッセージキューから取り出されて処理されるまで待つ
-                waitHandle.WaitOne();
-            }
-        }
-
-
-        /// <summary>
-        /// 同期コンテキストに、メッセージを非同期的に呼び出すようにポストします
-        /// </summary>
-        /// <param name="callback">ポストするコールバック関数</param>
-        /// <param name="state">ポストしたコールバック関数に渡すオブジェクト</param>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        public override void Post(SendOrPostCallback callback, object state)
-        {
-            // 解放済み例外送出関数を叩く
-            ThrowIfDisposed();
-
-
-            // キューをロック
-            lock (messageQueue)
-            {
-                // キューにメッセージが処理されるようにキューイング
-                messageQueue.Enqueue(new Message(callback, state, null));
-            }
-        }
-
-
-        /// <summary>
-        /// メッセージキューに蓄えられている、メッセージをすべて処理します
-        /// </summary>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        internal void DoProcessMessages()
-        {
-            // 解放済み例外送出関数を叩く
-            ThrowIfDisposed();
-
-
-            // キューをロック
-            lock (messageQueue)
-            {
-                // メッセージ処理中にポストされても次回になるよう、今回処理するべきメッセージ件数の取得
-                var processCount = messageQueue.Count;
-
-
-                // 今回処理するべきメッセージの件数分だけループ
-                for (int i = 0; i < processCount; ++i)
-                {
-                    // メッセージを呼ぶ
-                    messageQueue.Dequeue().Invoke();
-                }
-            }
-        }
-
-
-        /// <summary>
-        /// すでに解放済みの場合に ObjectDisposedException 例外を送出します
-        /// </summary>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        private void ThrowIfDisposed()
-        {
-            // すでに破棄済みなら
-            if (disposed)
-            {
-                // 例外を送出する
-                throw new ObjectDisposedException(nameof(StateMachineSynchronizationContext));
-            }
-        }
-    }
-    #endregion
-
-
-
-    #region 同期ステートマシン本体の実装
-    /// <summary>
-    /// 同期コンテキストの機能を持った、同期ステートマシンクラスです。
-    /// </summary>
-    /// <remarks>
-    /// 同期ステートマシンは、ステートマシンのあらゆる状態制御処理において、同期コンテキストがそのステートマシンに
-    /// スイッチし、同期コンテキストのハンドリングは、このステートマシンによって委ねられます。
-    /// 状態制御が完了した時は、本来の同期コンテキストに戻ります。
-    /// </remarks>
-    /// <typeparam name="TContext">このステートマシンが持つコンテキストの型（同期コンテキストの型ではありません）</typeparam>
-    public class ImtSynchronizationStateMachine<TContext> : ImtStateMachine<TContext>, IDisposable
-    {
-        // 以下メンバ変数定義
-        private StateMachineSynchronizationContext synchronizationContext;
-        private bool disposed;
-
-
-
-        /// <summary>
-        /// ImtSynchronizationStateMachine のインスタンスを初期化します
+        /// ImtStateMachine のインスタンスを初期化します
         /// </summary>
         /// <param name="context">このステートマシンが持つコンテキスト</param>
         /// <exception cref="ArgumentNullException">context が null です</exception>
-        public ImtSynchronizationStateMachine(TContext context) : base(context)
+        public ImtStateMachine(TContext context) : base(context)
         {
-            // ステートマシン用同期コンテキストを生成
-            synchronizationContext = new StateMachineSynchronizationContext();
-        }
-
-
-        /// <summary>
-        /// ImtSynchronizationStateMachine のデストラクタです
-        /// </summary>
-        ~ImtSynchronizationStateMachine()
-        {
-            // デストラクタからDispose呼び出し
-            Dispose(false);
-        }
-
-
-        /// <summary>
-        /// リソースの解放をします
-        /// </summary>
-        public void Dispose()
-        {
-            // DisposeからのDispose呼び出しをして、デストラクタを呼ばないようにしてもらう
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-
-        /// <summary>
-        /// リソースの実際の解放をします
-        /// </summary>
-        /// <param name="disposing">マネージ解放の場合は true を、アンマネージ解放の場合は false を指定</param>
-        protected virtual void Dispose(bool disposing)
-        {
-            // 解放済みなら
-            if (disposed)
-            {
-                // 直ちに終了
-                return;
-            }
-
-
-            // マネージ解放なら
-            if (disposing)
-            {
-                // 同期コンテキストの解放もする
-                synchronizationContext.Dispose();
-            }
-
-
-            // 解放済みマーク
-            disposed = true;
-        }
-
-
-        #region 同期コンテキストのハンドリング系
-        /// <summary>
-        /// このステートマシンに同期コンテキストをスイッチしてから、このステートマシンに送られた、同期コンテキストのメッセージをすべて処理します。
-        /// 操作が完了した時は、本来の同期コンテキストに戻ります。
-        /// </summary>
-        /// <remarks>
-        /// このステートマシンの状態更新処理中に、同期コンテキストに送られたメッセージを処理するためには必ずこの関数を呼び出すようにして下さい。
-        /// 呼び出さずに放置をしてしまった場合は、システムに深刻なダメージを与えることになります。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException">ステートマシンは、まだ起動していません</exception>
-        /// <exception cref="InvalidOperationException">現在のステートマシンは、既に更新処理を実行しています</exception>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        public void DoProcessMessage()
-        {
-            // 解放済み例外送出関数を叩く
-            ThrowIfDisposed();
-
-
-            // ステートマシンがまだ起動していないなら例外を吐く
-            IfNotRunningThrowException();
-
-
-            // ステートマシンが既に更新処理を実行しているのなら
-            if (Updating)
-            {
-                // 更新処理中に呼び出すことは許されない
-                throw new InvalidOperationException("現在のステートマシンは、既に更新処理を実行しています");
-            }
-
-
-            // もとに戻すために現在の同期コンテキストを拾ってから自身の同期コンテキストに切り替える
-            var previousContext = SynchronizationContext.Current;
-            SynchronizationContext.SetSynchronizationContext(synchronizationContext);
-
-
-            // 同期コンテキストのメッセージを処理する
-            synchronizationContext.DoProcessMessages();
-
-
-            // 本来の同期コンテキストに戻す
-            SynchronizationContext.SetSynchronizationContext(previousContext);
-        }
-
-
-        /// <summary>
-        /// このステートマシンに同期コンテキストをスイッチしてから、このステートマシンに送られた、同期コンテキストのメッセージをすべて処理します。
-        /// さらに、すべてのメッセージの処理が終わったらそのまま更新処理を呼び出します。
-        /// 操作が完了した時は、本来の同期コンテキストに戻ります。
-        /// </summary>
-        /// <remarks>
-        /// このステートマシンの状態更新処理中に、同期コンテキストに送られたメッセージを処理するためには必ずこの関数を呼び出すようにして下さい。
-        /// 呼び出さずに放置をしてしまった場合は、システムに深刻なダメージを与えることになります。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException">ステートマシンは、まだ起動していません</exception>
-        /// <exception cref="InvalidOperationException">現在のステートマシンは、既に更新処理を実行しています</exception>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        public void DoProcessMessageWithUpdate()
-        {
-            // 解放済み例外送出関数を叩く
-            ThrowIfDisposed();
-
-
-            // ステートマシンがまだ起動していないなら例外を吐く
-            IfNotRunningThrowException();
-
-
-            // ステートマシンが既に更新処理を実行しているのなら
-            if (Updating)
-            {
-                // 更新処理中に呼び出すことは許されない
-                throw new InvalidOperationException("現在のステートマシンは、既に更新処理を実行しています");
-            }
-
-
-            // もとに戻すために現在の同期コンテキストを拾ってから自身の同期コンテキストに切り替える
-            var previousContext = SynchronizationContext.Current;
-            SynchronizationContext.SetSynchronizationContext(synchronizationContext);
-
-
-            // 同期コンテキストのメッセージを処理を行い、そのまま継続してUpdateを呼ぶ
-            synchronizationContext.DoProcessMessages();
-            base.Update();
-
-
-            // 本来の同期コンテキストに戻す
-            SynchronizationContext.SetSynchronizationContext(previousContext);
-        }
-        #endregion
-
-
-        #region ステートスタック操作系のオーバーライド
-        /// <summary>
-        /// このステートマシンに同期コンテキストをスイッチしてから、ステートスタックに積まれているステートを取り出し、遷移の準備を行います。
-        /// 操作が完了した時は、本来の同期コンテキストに戻ります。
-        /// </summary>
-        /// <remarks>
-        /// この関数の挙動は、イベントIDを送ることのない点を除けば SendEvent 関数と非常に似ています。
-        /// 既に SendEvent によって次の遷移の準備ができている場合は、スタックからステートはポップされることはありません。
-        /// さらに、この状態更新処理中に呼び出された非同期処理を継続するためには DoProcessMessage 関数を呼び出して下さい。
-        /// </remarks>
-        /// <returns>スタックからステートがポップされ次の遷移の準備が完了した場合は true を、ポップするステートがなかったり、ステートによりポップがガードされた場合は false を返します</returns>
-        /// <exception cref="InvalidOperationException">ステートマシンは、まだ起動していません</exception>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        /// <see cref="DoProcessMessage"/>
-        /// <see cref="DoProcessMessageWithUpdate"/>
-        public override bool PopState()
-        {
-            // 解放済み例外送出関数を叩く
-            ThrowIfDisposed();
-
-
-            // もとに戻すために現在の同期コンテキストを拾ってから自身の同期コンテキストに切り替える
-            var previousContext = SynchronizationContext.Current;
-            SynchronizationContext.SetSynchronizationContext(synchronizationContext);
-
-
-            // 通常のPopStateを呼び出す
-            var result = base.PopState();
-
-
-            // 本来の同期コンテキストに戻して結果を返す
-            SynchronizationContext.SetSynchronizationContext(previousContext);
-            return result;
-        }
-
-
-        /// <summary>
-        /// このステートマシンに同期コンテキストをスイッチしてから、ステートスタックに積まれているステートを取り出し、現在のステートとして直ちに直接設定します。
-        /// 操作が完了した時は、本来の同期コンテキストに戻ります。
-        /// </summary>
-        /// <remarks>
-        /// この関数の挙動は PopState() 関数と違い、ポップされたステートがそのまま現在処理中のステートとして直ちに設定するため、
-        /// 状態の遷移処理は行われず、ポップされたステートの Enter() は呼び出されずそのまま次回から Update() が呼び出されるようになります。
-        /// さらに、この状態更新処理中に呼び出された非同期処理を継続するためには DoProcessMessage 関数を呼び出して下さい。
-        /// </remarks>
-        /// <returns>スタックからステートがポップされ、現在のステートとして設定出来た場合は true を、ポップするステートが無いか、ポップがガードされた場合は false を返します</returns>
-        /// <exception cref="InvalidOperationException">ステートマシンは、まだ起動していません</exception>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        /// <see cref="DoProcessMessage"/>
-        /// <see cref="DoProcessMessageWithUpdate"/>
-        public override bool PopAndDirectSetState()
-        {
-            // 解放済み例外送出関数を叩く
-            ThrowIfDisposed();
-
-
-            // もとに戻すために現在の同期コンテキストを拾ってから自身の同期コンテキストに切り替える
-            var previousContext = SynchronizationContext.Current;
-            SynchronizationContext.SetSynchronizationContext(synchronizationContext);
-
-
-            // 通常のPopAndDirectSetStateを呼び出す
-            var result = base.PopAndDirectSetState();
-
-
-            // 本来の同期コンテキストに戻して結果を返す
-            SynchronizationContext.SetSynchronizationContext(previousContext);
-            return result;
-        }
-        #endregion
-
-
-        #region ステートマシン制御系のオーバーライド
-        /// <summary>
-        /// このステートマシンに同期コンテキストをスイッチしてから、イベントを送信して、ステート遷移の準備を行います。
-        /// 操作が完了した時は、本来の同期コンテキストに戻ります。
-        /// </summary>
-        /// <remarks>
-        /// ステートの遷移は直ちに行われず、次の Update が実行された時に遷移処理が行われます。
-        /// また、この関数によるイベント受付優先順位は、一番最初に遷移を受け入れたイベントのみであり Update によって遷移されるまで、後続のイベントはすべて失敗します。
-        /// さらに、イベントはステートの Enter または Update 処理中でも受け付けることが可能で、ステートマシンの Update 中に
-        /// 何度も遷移をすることが可能ですが Exit 中で遷移中になるため例外が送出されます。
-        /// そして、この関数の処理中に呼び出された非同期処理を継続するためには DoProcessMessage 関数を呼び出して下さい。
-        /// </remarks>
-        /// <param name="eventId">ステートマシンに送信するイベントID</param>
-        /// <returns>ステートマシンが送信されたイベントを受け付けた場合は true を、イベントを拒否または、イベントの受付ができない場合は false を返します</returns>
-        /// <exception cref="InvalidOperationException">ステートマシンは、まだ起動していません</exception>
-        /// <exception cref="InvalidOperationException">ステートが Exit 処理中のためイベントを受け付けることが出来ません</exception>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        /// <see cref="DoProcessMessage"/>
-        /// <see cref="DoProcessMessageWithUpdate"/>
-        public override bool SendEvent(int eventId)
-        {
-            // 解放済み例外送出関数を叩く
-            ThrowIfDisposed();
-
-
-            // もとに戻すために現在の同期コンテキストを拾ってから自身の同期コンテキストに切り替える
-            var previousContext = SynchronizationContext.Current;
-            SynchronizationContext.SetSynchronizationContext(synchronizationContext);
-
-
-            // 通常のSendEventを呼び出す
-            var result = base.SendEvent(eventId);
-
-
-            // 本来の同期コンテキストに戻して結果を返す
-            SynchronizationContext.SetSynchronizationContext(previousContext);
-            return result;
-        }
-
-
-        /// <summary>
-        /// このステートマシンに同期コンテキストをスイッチしてから、状態を更新します。
-        /// 操作が完了した時は、本来の同期コンテキストに戻ります。
-        /// </summary>
-        /// <remarks>
-        /// ステートマシンの現在処理しているステートの更新を行いますが、まだ未起動の場合は SetStartState 関数によって設定されたステートが起動します。
-        /// また、ステートマシンが初回起動時の場合、ステートのUpdateは呼び出されず、次の更新処理が実行される時になります。
-        /// さらに、この状態更新処理中に呼び出された非同期処理を継続するためには DoProcessMessage 関数を呼び出して下さい。
-        /// </remarks>
-        /// <exception cref="InvalidOperationException">現在のステートマシンは、既に更新処理を実行しています</exception>
-        /// <exception cref="InvalidOperationException">開始ステートが設定されていないため、ステートマシンの起動が出来ません</exception>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        /// <see cref="DoProcessMessage"/>
-        /// <see cref="DoProcessMessageWithUpdate"/>
-        public override void Update()
-        {
-            // 解放済み例外送出関数を叩く
-            ThrowIfDisposed();
-
-
-            // もとに戻すために現在の同期コンテキストを拾ってから自身の同期コンテキストに切り替える
-            var previousContext = SynchronizationContext.Current;
-            SynchronizationContext.SetSynchronizationContext(synchronizationContext);
-
-
-            // 通常のUpdateを呼び出す
-            base.Update();
-
-
-            // 本来の同期コンテキストに戻す
-            SynchronizationContext.SetSynchronizationContext(previousContext);
-        }
-        #endregion
-
-
-        /// <summary>
-        /// すでに解放済みの場合に ObjectDisposedException 例外を送出します
-        /// </summary>
-        /// <exception cref="ObjectDisposedException">オブジェクトは解放済みです</exception>
-        private void ThrowIfDisposed()
-        {
-            // すでに破棄済みなら
-            if (disposed)
-            {
-                // 例外を送出する
-                throw new ObjectDisposedException(nameof(ImtSynchronizationStateMachine<TContext>));
-            }
         }
     }
     #endregion
