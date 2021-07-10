@@ -1,6 +1,7 @@
 using IceMilkTea.Core;
 using UnityEngine;
 
+[DefaultExecutionOrder(100)]
 public class MainGameScene : MonoBehaviour
 {
     // ステートマシンのイベントID列挙型
