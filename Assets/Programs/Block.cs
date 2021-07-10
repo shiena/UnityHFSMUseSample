@@ -17,15 +17,15 @@ public class Block : MonoBehaviour
     public bool IsAlive => stateMachine.IsCurrentState<AliveState>();
 
 
-    private ImtStateMachine<Block> stateMachine;
+    private ImtStateMachine<Block, StateEventId> stateMachine;
 
 
 
     private void Awake()
     {
-        stateMachine = new ImtStateMachine<Block>(this);
-        stateMachine.AddTransition<AliveState, DeadState>((int)StateEventId.Dead);
-        stateMachine.AddTransition<DeadState, AliveState>((int)StateEventId.Revive);
+        stateMachine = new ImtStateMachine<Block, StateEventId>(this);
+        stateMachine.AddTransition<AliveState, DeadState>(StateEventId.Dead);
+        stateMachine.AddTransition<DeadState, AliveState>(StateEventId.Revive);
 
 
         stateMachine.SetStartState<AliveState>();
@@ -50,7 +50,7 @@ public class Block : MonoBehaviour
         if (collision.gameObject.CompareTag("Ball"))
         {
             // 死亡イベントを送る
-            stateMachine.SendEvent((int)StateEventId.Dead);
+            stateMachine.SendEvent(StateEventId.Dead);
         }
     }
 
@@ -58,12 +58,12 @@ public class Block : MonoBehaviour
     public void Revive()
     {
         // ステートマシンに復活イベントを送る
-        stateMachine.SendEvent((int)StateEventId.Revive);
+        stateMachine.SendEvent(StateEventId.Revive);
     }
 
 
 
-    private class AliveState : ImtStateMachine<Block>.State
+    private class AliveState : ImtStateMachine<Block, StateEventId>.State
     {
         protected override void Enter()
         {
@@ -73,7 +73,7 @@ public class Block : MonoBehaviour
     }
 
 
-    private class DeadState : ImtStateMachine<Block>.State
+    private class DeadState : ImtStateMachine<Block, StateEventId>.State
     {
         protected override void Enter()
         {

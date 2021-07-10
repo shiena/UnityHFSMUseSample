@@ -33,7 +33,7 @@ public class MainGameScene : MonoBehaviour
     private Block[] blocks = null;
 
     // ステートマシン変数の定義、もちろんコンテキストは MainGameScene クラス
-    private ImtStateMachine<MainGameScene> stateMachine;
+    private ImtStateMachine<MainGameScene, StateEventId> stateMachine;
     private int missCount;
 
 
@@ -42,15 +42,15 @@ public class MainGameScene : MonoBehaviour
     private void Awake()
     {
         // ステートマシンの遷移テーブルを構築（コンテキストのインスタンスはもちろん自分自身）
-        stateMachine = new ImtStateMachine<MainGameScene>(this);
-        stateMachine.AddTransition<ResetState, StandbyState>((int)StateEventId.Finish);
-        stateMachine.AddTransition<StandbyState, PlayingState>((int)StateEventId.Play);
-        stateMachine.AddTransition<PlayingState, MissState>((int)StateEventId.Miss);
-        stateMachine.AddTransition<PlayingState, GameClearState>((int)StateEventId.AllBlockBroken);
-        stateMachine.AddTransition<MissState, StandbyState>((int)StateEventId.Retry);
-        stateMachine.AddTransition<MissState, GameOverState>((int)StateEventId.Exit);
-        stateMachine.AddTransition<GameClearState, ResetState>((int)StateEventId.Finish);
-        stateMachine.AddTransition<GameOverState, ResetState>((int)StateEventId.Finish);
+        stateMachine = new ImtStateMachine<MainGameScene, StateEventId>(this);
+        stateMachine.AddTransition<ResetState, StandbyState>(StateEventId.Finish);
+        stateMachine.AddTransition<StandbyState, PlayingState>(StateEventId.Play);
+        stateMachine.AddTransition<PlayingState, MissState>(StateEventId.Miss);
+        stateMachine.AddTransition<PlayingState, GameClearState>(StateEventId.AllBlockBroken);
+        stateMachine.AddTransition<MissState, StandbyState>(StateEventId.Retry);
+        stateMachine.AddTransition<MissState, GameOverState>(StateEventId.Exit);
+        stateMachine.AddTransition<GameClearState, ResetState>(StateEventId.Finish);
+        stateMachine.AddTransition<GameOverState, ResetState>(StateEventId.Finish);
 
 
         // 起動状態はReset
@@ -75,11 +75,11 @@ public class MainGameScene : MonoBehaviour
     public void MissSignal()
     {
         // ステートマシンにミスイベントを送る
-        stateMachine.SendEvent((int)StateEventId.Miss);
+        stateMachine.SendEvent(StateEventId.Miss);
     }
 
 
-    private class ResetState : ImtStateMachine<MainGameScene>.State
+    private class ResetState : ImtStateMachine<MainGameScene, StateEventId>.State
     {
         protected override void Enter()
         {
@@ -96,12 +96,12 @@ public class MainGameScene : MonoBehaviour
             Context.missCount = 0;
 
 
-            StateMachine.SendEvent((int)StateEventId.Finish);
+            StateMachine.SendEvent(StateEventId.Finish);
         }
     }
 
 
-    private class StandbyState : ImtStateMachine<MainGameScene>.State
+    private class StandbyState : ImtStateMachine<MainGameScene, StateEventId>.State
     {
         protected override void Update()
         {
@@ -113,7 +113,7 @@ public class MainGameScene : MonoBehaviour
     }
 
 
-    private class PlayingState : ImtStateMachine<MainGameScene>.State
+    private class PlayingState : ImtStateMachine<MainGameScene, StateEventId>.State
     {
         protected override void Enter()
         {
@@ -141,13 +141,13 @@ public class MainGameScene : MonoBehaviour
 
             if (blockAllDead)
             {
-                StateMachine.SendEvent((int)StateEventId.AllBlockBroken);
+                StateMachine.SendEvent(StateEventId.AllBlockBroken);
             }
         }
     }
 
 
-    private class MissState : ImtStateMachine<MainGameScene>.State
+    private class MissState : ImtStateMachine<MainGameScene, StateEventId>.State
     {
         protected override void Enter()
         {
@@ -159,32 +159,32 @@ public class MainGameScene : MonoBehaviour
             Context.missCount += 1;
             if (Context.missCount == Context.availablePlayCount)
             {
-                StateMachine.SendEvent((int)StateEventId.Exit);
+                StateMachine.SendEvent(StateEventId.Exit);
                 return;
             }
 
 
-            StateMachine.SendEvent((int)StateEventId.Retry);
+            StateMachine.SendEvent(StateEventId.Retry);
         }
     }
 
 
-    private class GameClearState : ImtStateMachine<MainGameScene>.State
+    private class GameClearState : ImtStateMachine<MainGameScene, StateEventId>.State
     {
         protected override void Enter()
         {
             Debug.Log("GameClear!!!");
-            StateMachine.SendEvent((int)StateEventId.Finish);
+            StateMachine.SendEvent(StateEventId.Finish);
         }
     }
 
 
-    private class GameOverState : ImtStateMachine<MainGameScene>.State
+    private class GameOverState : ImtStateMachine<MainGameScene, StateEventId>.State
     {
         protected override void Enter()
         {
             Debug.Log("GameOver...");
-            StateMachine.SendEvent((int)StateEventId.Finish);
+            StateMachine.SendEvent(StateEventId.Finish);
         }
     }
 }

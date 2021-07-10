@@ -19,7 +19,7 @@ public class Player : MonoBehaviour
     private float moveSpeed = 1.0f;
 
     // ステートマシン変数の定義、もちろんコンテキストは Player クラス
-    private ImtStateMachine<Player> stateMachine;
+    private ImtStateMachine<Player, StateEventId> stateMachine;
     private Rigidbody myRigidbody;
     private Vector3 leftRayOrigin;
     private Vector3 rightRayOrigin;
@@ -34,9 +34,9 @@ public class Player : MonoBehaviour
 
 
         // ステートマシンの遷移テーブルを構築（コンテキストのインスタンスはもちろん自分自身）
-        stateMachine = new ImtStateMachine<Player>(this);
-        stateMachine.AddTransition<DisabledState, EnabledState>((int)StateEventId.Enable);
-        stateMachine.AddTransition<EnabledState, DisabledState>((int)StateEventId.Disable);
+        stateMachine = new ImtStateMachine<Player, StateEventId>(this);
+        stateMachine.AddTransition<DisabledState, EnabledState>(StateEventId.Enable);
+        stateMachine.AddTransition<EnabledState, DisabledState>(StateEventId.Disable);
 
 
         // 起動状態はDisabled
@@ -70,7 +70,7 @@ public class Player : MonoBehaviour
     public void EnableMove()
     {
         // ステートマシンに有効イベントを叩きつける
-        stateMachine.SendEvent((int)StateEventId.Enable);
+        stateMachine.SendEvent(StateEventId.Enable);
     }
 
 
@@ -78,7 +78,7 @@ public class Player : MonoBehaviour
     public void DisableMove()
     {
         // ステートマシンに無効イベントを叩きつける
-        stateMachine.SendEvent((int)StateEventId.Disable);
+        stateMachine.SendEvent(StateEventId.Disable);
     }
 
 
@@ -90,14 +90,14 @@ public class Player : MonoBehaviour
 
 
     // プレイヤーの移動も何も出来ない哀れな状態クラス
-    private class DisabledState : ImtStateMachine<Player>.State
+    private class DisabledState : ImtStateMachine<Player, StateEventId>.State
     {
     }
 
 
 
     // プレイヤーの移動が許された状態クラス
-    private class EnabledState : ImtStateMachine<Player>.State
+    private class EnabledState : ImtStateMachine<Player, StateEventId>.State
     {
         // 状態の更新を行います
         protected override void Update()
