@@ -1,4 +1,4 @@
-﻿using IceMilkTea.Core;
+using IceMilkTea.Core;
 using UnityEngine;
 
 public class MainGameScene : MonoBehaviour
@@ -10,7 +10,7 @@ public class MainGameScene : MonoBehaviour
         Miss,
         Retry,
         Exit,
-        AllBlockBloken,
+        AllBlockBroken,
         Finish,
     }
 
@@ -45,7 +45,7 @@ public class MainGameScene : MonoBehaviour
         stateMachine.AddTransition<ResetState, StandbyState>((int)StateEventId.Finish);
         stateMachine.AddTransition<StandbyState, PlayingState>((int)StateEventId.Play);
         stateMachine.AddTransition<PlayingState, MissState>((int)StateEventId.Miss);
-        stateMachine.AddTransition<PlayingState, GameClearState>((int)StateEventId.AllBlockBloken);
+        stateMachine.AddTransition<PlayingState, GameClearState>((int)StateEventId.AllBlockBroken);
         stateMachine.AddTransition<MissState, StandbyState>((int)StateEventId.Retry);
         stateMachine.AddTransition<MissState, GameOverState>((int)StateEventId.Exit);
         stateMachine.AddTransition<GameClearState, ResetState>((int)StateEventId.Finish);
@@ -140,7 +140,7 @@ public class MainGameScene : MonoBehaviour
 
             if (blockAllDead)
             {
-                StateMachine.SendEvent((int)StateEventId.AllBlockBloken);
+                StateMachine.SendEvent((int)StateEventId.AllBlockBroken);
             }
         }
     }
