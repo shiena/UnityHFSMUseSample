@@ -1,6 +1,8 @@
 ﻿using IceMilkTea.Core;
 using UnityEngine;
 
+[RequireComponent(typeof(MeshRenderer))]
+[RequireComponent(typeof(Collider))]
 public class Block : MonoBehaviour
 {
     // 状態イベントの定義
