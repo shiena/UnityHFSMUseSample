@@ -1,11 +1,12 @@
-using IceMilkTea.Core;
 using UnityEngine;
+using StateMachine = IceMilkTea.Core.ImtStateMachine<MainGameScene, MainGameScene.StateEventId>;
+using State = IceMilkTea.Core.ImtStateMachine<MainGameScene, MainGameScene.StateEventId>.State;
 
 [DefaultExecutionOrder(100)]
 public class MainGameScene : MonoBehaviour
 {
     // ステートマシンのイベントID列挙型
-    private enum StateEventId
+    internal enum StateEventId
     {
         Play,
         Miss,
@@ -33,7 +34,7 @@ public class MainGameScene : MonoBehaviour
     private Block[] blocks = null;
 
     // ステートマシン変数の定義、もちろんコンテキストは MainGameScene クラス
-    private ImtStateMachine<MainGameScene, StateEventId> stateMachine;
+    private StateMachine stateMachine;
     private int missCount;
 
 
@@ -42,7 +43,7 @@ public class MainGameScene : MonoBehaviour
     private void Awake()
     {
         // ステートマシンの遷移テーブルを構築（コンテキストのインスタンスはもちろん自分自身）
-        stateMachine = new ImtStateMachine<MainGameScene, StateEventId>(this);
+        stateMachine = new StateMachine(this);
         stateMachine.AddTransition<ResetState, StandbyState>(StateEventId.Finish);
         stateMachine.AddTransition<StandbyState, PlayingState>(StateEventId.Play);
         stateMachine.AddTransition<PlayingState, MissState>(StateEventId.Miss);
@@ -79,7 +80,7 @@ public class MainGameScene : MonoBehaviour
     }
 
 
-    private class ResetState : ImtStateMachine<MainGameScene, StateEventId>.State
+    private class ResetState : State
     {
         protected override void Enter()
         {
@@ -101,7 +102,7 @@ public class MainGameScene : MonoBehaviour
     }
 
 
-    private class StandbyState : ImtStateMachine<MainGameScene, StateEventId>.State
+    private class StandbyState : State
     {
         protected override void Update()
         {
@@ -113,7 +114,7 @@ public class MainGameScene : MonoBehaviour
     }
 
 
-    private class PlayingState : ImtStateMachine<MainGameScene, StateEventId>.State
+    private class PlayingState : State
     {
         protected override void Enter()
         {
@@ -147,7 +148,7 @@ public class MainGameScene : MonoBehaviour
     }
 
 
-    private class MissState : ImtStateMachine<MainGameScene, StateEventId>.State
+    private class MissState : State
     {
         protected override void Enter()
         {
@@ -169,7 +170,7 @@ public class MainGameScene : MonoBehaviour
     }
 
 
-    private class GameClearState : ImtStateMachine<MainGameScene, StateEventId>.State
+    private class GameClearState : State
     {
         protected override void Enter()
         {
@@ -179,7 +180,7 @@ public class MainGameScene : MonoBehaviour
     }
 
 
-    private class GameOverState : ImtStateMachine<MainGameScene, StateEventId>.State
+    private class GameOverState : State
     {
         protected override void Enter()
         {

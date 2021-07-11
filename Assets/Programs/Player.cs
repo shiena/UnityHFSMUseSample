@@ -1,5 +1,6 @@
-﻿using IceMilkTea.Core;
-using UnityEngine;
+﻿using UnityEngine;
+using StateMachine = IceMilkTea.Core.ImtStateMachine<Player, Player.StateEventId>;
+using State = IceMilkTea.Core.ImtStateMachine<Player, Player.StateEventId>.State;
 
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(MeshFilter))]
@@ -7,7 +8,7 @@ using UnityEngine;
 public class Player : MonoBehaviour
 {
     // ステートマシンのイベントID列挙型
-    private enum StateEventId
+    internal enum StateEventId
     {
         Enable,
         Disable,
@@ -19,7 +20,7 @@ public class Player : MonoBehaviour
     private float moveSpeed = 1.0f;
 
     // ステートマシン変数の定義、もちろんコンテキストは Player クラス
-    private ImtStateMachine<Player, StateEventId> stateMachine;
+    private StateMachine stateMachine;
     private Rigidbody myRigidbody;
     private Vector3 leftRayOrigin;
     private Vector3 rightRayOrigin;
@@ -34,7 +35,7 @@ public class Player : MonoBehaviour
 
 
         // ステートマシンの遷移テーブルを構築（コンテキストのインスタンスはもちろん自分自身）
-        stateMachine = new ImtStateMachine<Player, StateEventId>(this);
+        stateMachine = new StateMachine(this);
         stateMachine.AddTransition<DisabledState, EnabledState>(StateEventId.Enable);
         stateMachine.AddTransition<EnabledState, DisabledState>(StateEventId.Disable);
 
@@ -90,14 +91,14 @@ public class Player : MonoBehaviour
 
 
     // プレイヤーの移動も何も出来ない哀れな状態クラス
-    private class DisabledState : ImtStateMachine<Player, StateEventId>.State
+    private class DisabledState : State
     {
     }
 
 
 
     // プレイヤーの移動が許された状態クラス
-    private class EnabledState : ImtStateMachine<Player, StateEventId>.State
+    private class EnabledState : State
     {
         // 状態の更新を行います
         protected override void Update()

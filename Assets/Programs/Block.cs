@@ -1,12 +1,13 @@
-﻿using IceMilkTea.Core;
-using UnityEngine;
+﻿using UnityEngine;
+using StateMachine = IceMilkTea.Core.ImtStateMachine<Block, Block.StateEventId>;
+using State = IceMilkTea.Core.ImtStateMachine<Block, Block.StateEventId>.State;
 
 [RequireComponent(typeof(MeshRenderer))]
 [RequireComponent(typeof(Collider))]
 public class Block : MonoBehaviour
 {
     // 状態イベントの定義
-    private enum StateEventId
+    internal enum StateEventId
     {
         Dead,
         Revive,
@@ -17,13 +18,13 @@ public class Block : MonoBehaviour
     public bool IsAlive => stateMachine.IsCurrentState<AliveState>();
 
 
-    private ImtStateMachine<Block, StateEventId> stateMachine;
+    private StateMachine stateMachine;
 
 
 
     private void Awake()
     {
-        stateMachine = new ImtStateMachine<Block, StateEventId>(this);
+        stateMachine = new StateMachine(this);
         stateMachine.AddTransition<AliveState, DeadState>(StateEventId.Dead);
         stateMachine.AddTransition<DeadState, AliveState>(StateEventId.Revive);
 
@@ -63,7 +64,7 @@ public class Block : MonoBehaviour
 
 
 
-    private class AliveState : ImtStateMachine<Block, StateEventId>.State
+    private class AliveState : State
     {
         protected override void Enter()
         {
@@ -73,7 +74,7 @@ public class Block : MonoBehaviour
     }
 
 
-    private class DeadState : ImtStateMachine<Block, StateEventId>.State
+    private class DeadState : State
     {
         protected override void Enter()
         {
