@@ -1,7 +1,7 @@
 using UnityEngine;
-using StateBase = FSM.StateBase<MainGameScene.StateId, MainGameScene.EventId>;
+using StateBase = FSM.StateBase<MainGameScene.StateId>;
 using StateMachine = FSM.StateMachine<MainGameScene.StateId, MainGameScene.EventId>;
-using Transition = FSM.Transition<MainGameScene.StateId, MainGameScene.EventId>;
+using Transition = FSM.Transition<MainGameScene.StateId>;
 
 public class MainGameScene : MonoBehaviour
 {
@@ -125,7 +125,7 @@ public class MainGameScene : MonoBehaviour
             mainGameScene.missCount = 0;
 
 
-            fsm.Trigger(EventId.Finish);
+            (fsm as StateMachine)?.Trigger(EventId.Finish);
         }
     }
 
@@ -140,7 +140,7 @@ public class MainGameScene : MonoBehaviour
         {
             if (Input.GetKeyDown(KeyCode.Space))
             {
-                fsm.Trigger(EventId.Play);
+                (fsm as StateMachine)?.Trigger(EventId.Play);
             }
         }
     }
@@ -185,7 +185,7 @@ public class MainGameScene : MonoBehaviour
 
             if (blockAllDead)
             {
-                fsm.Trigger(EventId.AllBlockBroken);
+                (fsm as StateMachine)?.Trigger(EventId.AllBlockBroken);
             }
         }
     }
@@ -214,12 +214,12 @@ public class MainGameScene : MonoBehaviour
             mainGameScene.missCount += 1;
             if (mainGameScene.missCount == mainGameScene.availablePlayCount)
             {
-                fsm.Trigger(EventId.Exit);
+                (fsm as StateMachine)?.Trigger(EventId.Exit);
                 return;
             }
 
 
-            fsm.Trigger(EventId.Retry);
+            (fsm as StateMachine)?.Trigger(EventId.Retry);
         }
     }
 
@@ -233,7 +233,7 @@ public class MainGameScene : MonoBehaviour
         public override void OnEnter()
         {
             Debug.Log("GameClear!!!");
-            fsm.Trigger(EventId.Finish);
+            (fsm as StateMachine)?.Trigger(EventId.Finish);
         }
     }
 
@@ -247,7 +247,7 @@ public class MainGameScene : MonoBehaviour
         public override void OnEnter()
         {
             Debug.Log("GameOver...");
-            fsm.Trigger(EventId.Finish);
+            (fsm as StateMachine)?.Trigger(EventId.Finish);
         }
     }
 }

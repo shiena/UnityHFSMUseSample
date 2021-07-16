@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
-using StateBase = FSM.StateBase<Block.StateId, Block.EventId>;
+using StateBase = FSM.StateBase<Block.StateId>;
 using StateMachine = FSM.StateMachine<Block.StateId, Block.EventId>;
-using Transition = FSM.Transition<Block.StateId, Block.EventId>;
+using Transition = FSM.Transition<Block.StateId>;
 
 [RequireComponent(typeof(MeshRenderer))]
 [RequireComponent(typeof(Collider))]

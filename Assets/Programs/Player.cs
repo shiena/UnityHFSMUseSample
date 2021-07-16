@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
-using StateBase = FSM.StateBase<Player.StateId, Player.EventId>;
+using StateBase = FSM.StateBase<Player.StateId>;
 using StateMachine = FSM.StateMachine<Player.StateId, Player.EventId>;
-using Transition = FSM.Transition<Player.StateId, Player.EventId>;
+using Transition = FSM.Transition<Player.StateId>;
 
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(MeshFilter))]
