@@ -55,21 +55,21 @@ public class MainGameScene : MonoBehaviour
         // ステートマシンの遷移テーブルを構築（コンテキストのインスタンスはもちろん自分自身）
         stateMachine = new StateMachine(this);
 
-        stateMachine.AddState(StateId.Miss, new MissState());
-        stateMachine.AddState(StateId.Playing, new PlayingState());
-        stateMachine.AddState(StateId.Reset, new ResetState());
+        stateMachine.AddState(StateId.Miss, new MissState(this));
+        stateMachine.AddState(StateId.Playing, new PlayingState(this));
+        stateMachine.AddState(StateId.Reset, new ResetState(this));
         stateMachine.AddState(StateId.Standby, new StandbyState());
         stateMachine.AddState(StateId.GameClear, new GameClearState());
         stateMachine.AddState(StateId.GameOver, new GameOverState());
 
-        stateMachine.AddTriggerTransition(EventId.Finish, new Transition(StateId.Reset, StateId.Standby));
-        stateMachine.AddTriggerTransition(EventId.Play, new Transition(StateId.Standby, StateId.Playing));
-        stateMachine.AddTriggerTransition(EventId.Miss, new Transition(StateId.Playing, StateId.Miss));
-        stateMachine.AddTriggerTransition(EventId.AllBlockBroken, new Transition(StateId.Playing, StateId.GameClear));
-        stateMachine.AddTriggerTransition(EventId.Retry, new Transition(StateId.Miss, StateId.Standby));
-        stateMachine.AddTriggerTransition(EventId.Exit, new Transition(StateId.Miss, StateId.GameOver));
-        stateMachine.AddTriggerTransition(EventId.Finish, new Transition(StateId.GameClear, StateId.Reset));
-        stateMachine.AddTriggerTransition(EventId.Finish, new Transition(StateId.GameOver, StateId.Reset));
+        stateMachine.AddTriggerTransition(EventId.Finish, StateId.Reset, StateId.Standby);
+        stateMachine.AddTriggerTransition(EventId.Play, StateId.Standby, StateId.Playing);
+        stateMachine.AddTriggerTransition(EventId.Miss, StateId.Playing, StateId.Miss);
+        stateMachine.AddTriggerTransition(EventId.AllBlockBroken, StateId.Playing, StateId.GameClear);
+        stateMachine.AddTriggerTransition(EventId.Retry, StateId.Miss, StateId.Standby);
+        stateMachine.AddTriggerTransition(EventId.Exit, StateId.Miss, StateId.GameOver);
+        stateMachine.AddTriggerTransition(EventId.Finish, StateId.GameClear, StateId.Reset);
+        stateMachine.AddTriggerTransition(EventId.Finish, StateId.GameOver, StateId.Reset);
 
         // 起動状態はReset
         stateMachine.SetStartState(StateId.Reset);
@@ -99,15 +99,11 @@ public class MainGameScene : MonoBehaviour
 
     private class ResetState : StateBase
     {
-        private MainGameScene mainGameScene;
+        private readonly MainGameScene mainGameScene;
 
-        public ResetState(bool needsExitTime = false) : base(needsExitTime)
+        public ResetState(MainGameScene mainGameScene, bool needsExitTime = false) : base(needsExitTime)
         {
-        }
-
-        public override void Init()
-        {
-            mainGameScene = mono as MainGameScene;
+            this.mainGameScene = mainGameScene;
         }
 
         public override void OnEnter()
@@ -148,15 +144,11 @@ public class MainGameScene : MonoBehaviour
 
     private class PlayingState : StateBase
     {
-        private MainGameScene mainGameScene;
+        private readonly MainGameScene mainGameScene;
 
-        public PlayingState(bool needsExitTime = false) : base(needsExitTime)
+        public PlayingState(MainGameScene mainGameScene, bool needsExitTime = false) : base(needsExitTime)
         {
-        }
-
-        public override void Init()
-        {
-            mainGameScene = mono as MainGameScene;
+            this.mainGameScene = mainGameScene;
         }
 
         public override void OnEnter()
@@ -193,15 +185,11 @@ public class MainGameScene : MonoBehaviour
 
     private class MissState : StateBase
     {
-        private MainGameScene mainGameScene;
+        private readonly MainGameScene mainGameScene;
 
-        public MissState(bool needsExitTime = false) : base(needsExitTime)
+        public MissState(MainGameScene mainGameScene, bool needsExitTime = false) : base(needsExitTime)
         {
-        }
-
-        public override void Init()
-        {
-            mainGameScene = mono as MainGameScene;
+            this.mainGameScene = mainGameScene;
         }
 
         public override void OnEnter()

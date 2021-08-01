@@ -32,13 +32,11 @@ public class Block : MonoBehaviour
     private void Awake()
     {
         stateMachine = new StateMachine(this);
-        stateMachine.AddState(StateId.Revive, new AliveState());
-        stateMachine.AddState(StateId.Dead, new DeadState());
+        stateMachine.AddState(StateId.Revive, new AliveState(this));
+        stateMachine.AddState(StateId.Dead, new DeadState(this));
 
-        stateMachine.AddTriggerTransition(EventId.Revive,
-            new Transition(StateId.Dead, StateId.Revive));
-        stateMachine.AddTriggerTransition(EventId.Dead,
-            new Transition(StateId.Revive, StateId.Dead));
+        stateMachine.AddTriggerTransition(EventId.Revive, StateId.Dead, StateId.Revive);
+        stateMachine.AddTriggerTransition(EventId.Dead, StateId.Revive, StateId.Dead);
 
         stateMachine.SetStartState(StateId.Revive);
 
@@ -73,17 +71,13 @@ public class Block : MonoBehaviour
 
     private class AliveState : StateBase
     {
-        private MeshRenderer meshRenderer;
-        private Collider collider;
+        private readonly MeshRenderer meshRenderer;
+        private readonly Collider collider;
 
-        public AliveState(bool needsExitTime = false) : base(needsExitTime)
+        public AliveState(Block block, bool needsExitTime = false) : base(needsExitTime)
         {
-        }
-
-        public override void Init()
-        {
-            meshRenderer = mono.GetComponent<MeshRenderer>();
-            collider = mono.GetComponent<Collider>();
+            meshRenderer = block.GetComponent<MeshRenderer>();
+            collider = block.GetComponent<Collider>();
         }
 
         public override void OnEnter()
@@ -96,17 +90,13 @@ public class Block : MonoBehaviour
 
     private class DeadState : StateBase
     {
-        private MeshRenderer meshRenderer;
-        private Collider collider;
+        private readonly MeshRenderer meshRenderer;
+        private readonly Collider collider;
 
-        public DeadState(bool needsExitTime = false) : base(needsExitTime)
+        public DeadState(Block block, bool needsExitTime = false) : base(needsExitTime)
         {
-        }
-
-        public override void Init()
-        {
-            meshRenderer = mono.GetComponent<MeshRenderer>();
-            collider = mono.GetComponent<Collider>();
+            meshRenderer = block.GetComponent<MeshRenderer>();
+            collider = block.GetComponent<Collider>();
         }
 
         public override void OnEnter()

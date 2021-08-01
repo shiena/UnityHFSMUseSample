@@ -43,10 +43,10 @@ public class Player : MonoBehaviour
 
         // ステートマシンの遷移テーブルを構築（コンテキストのインスタンスはもちろん自分自身）
         stateMachine = new StateMachine(this);
-        stateMachine.AddState(StateId.Enable, new EnabledState());
+        stateMachine.AddState(StateId.Enable, new EnabledState(this));
         stateMachine.AddState(StateId.Disable, new DisabledState());
-        stateMachine.AddTriggerTransition(EventId.Enable, new Transition(StateId.Disable, StateId.Enable));
-        stateMachine.AddTriggerTransition(EventId.Disable, new Transition(StateId.Enable, StateId.Disable));
+        stateMachine.AddTriggerTransition(EventId.Enable, StateId.Disable, StateId.Enable);
+        stateMachine.AddTriggerTransition(EventId.Disable, StateId.Enable, StateId.Disable);
 
 
         // 起動状態はDisabled
@@ -112,15 +112,11 @@ public class Player : MonoBehaviour
     // プレイヤーの移動が許された状態クラス
     private class EnabledState : StateBase
     {
-        private Player player;
+        private readonly Player player;
 
-        public EnabledState(bool needsExitTime = false) : base(needsExitTime)
+        public EnabledState(Player player, bool needsExitTime = false) : base(needsExitTime)
         {
-        }
-
-        public override void Init()
-        {
-            player = mono as Player;
+            this.player = player;
         }
 
         // 状態の更新を行います
